@@ -3,28 +3,15 @@
 use strict;
 use warnings;
 
-use Config::Auto;
+use Config::IniFiles;
 use File::Basename 'basename';
 use File::Path 'make_path';
 use File::Spec::Functions 'catfile', 'catdir';
 use Makefile::Parser;
 
-sub add_config {
-  my ($file, $hash) = @_;
-  my $conf = Config::Auto::parse($file, format => "ini");
-  while (my ($k1, $v1) = each %{$conf}) {
-    while (my ($k2, $v2) = each %{$v1}) {
-      $hash->{"$k1.$k2"} = $v2;
-    }
-  }
-}
 my %conf;
-add_config('builder.conf', \%conf);
-add_config('local.conf', \%conf);
-
-while (my ($k, $v) = each %conf) {
-  print "$k: $v\n";
-}
+my $conf = Config::IniFiles->new(-file => 'builder.conf');
+$conf = Config::IniFiles->new(-file => 'local.conf', -import => $conf);
 
 my %targets = (
   teensy31 => {
@@ -63,32 +50,25 @@ my @keyboard_layouts =
      SPANISH_LATIN_AMERICA SWEDISH TURKISH UNITED_KINGDOM
      US_INTERNATIONAL);
 
-use constant {
-  default_usb_type => "SERIAL",
-  default_keyboard_layout => "US_ENGLISH",
-  default_cpu_freq => 48,
-};
-
-die "You must specify a target.\n" if not exists $conf{'main.target'};
-die "Invalid target: ".$conf{'main.target'}."\n" if not exists $targets{$conf{'main.target'}};
-my %target = %{$targets{$conf{'main.target'}}};
-die "You must specify a program name.\n" if not exists $conf{'main.name'};
-my $usb_type = uc($conf{'main.usb_type'} // default_usb_type);
+die "You must specify a target.\n" if not $conf->exists('main', 'target');
+die "Invalid target: ".$conf->val('main', 'target')."\n" if not exists $targets{$conf->val('main', 'target')};
+my %target = %{$targets{$conf->val('main', 'target')}};
+my $usb_type = uc($conf->val('main', 'usb_type', 'SERIAL'));
 die "Invalid usb type: ${usb_type}.\n" if not grep { $_ eq $usb_type } @usb_types;
-my $keyboard_layout = uc($conf{'main.keyboard_layouts'} // default_keyboard_layout);
+my $keyboard_layout = uc($conf->val('main', 'keyboard_layout', 'US_ENGLISH'));
 die "Invalid keyboard layout: ${keyboard_layout}.\n" if not grep { $_ eq $keyboard_layout } @keyboard_layouts;
-my $cpu_freq = $conf{'main.cpu_freq'} // default_cpu_freq;
+my $cpu_freq = $conf->val('main', 'cpu_freq', 48);
 die "Invalid CPU frequency: ${cpu_freq}.\n" if not grep { $_ == $cpu_freq } @{$target{valid_freq}};
 
-my @libs = grep { m/^libs\./ } keys %conf;
-die "You must specify the 'teensy_core' library.\n" if not grep { $_ eq 'libs.teensy_core' } @libs;
+my @libs = $conf->Parameters('libs');
+die "You must specify the 'teensy_core' library.\n" if not grep { $_ eq 'teensy_core' } @libs;
 
 sub common_flags {
   my $config = sprintf '-DF_CPU=%d000000 -DUSB_%s -DLAYOUT_%s -D__%s__ -mcpu=%s',
     $cpu_freq, $usb_type, $keyboard_layout, uc($target{core}), $target{cpu};
   my $base = '-DUSING_MAKEFILE -DARDUINO_ARCH_AVR -DARDUINO=10605 -DTEENSYDUINO=125';
   my $flags = '-Wall -g -ffunction-sections -fdata-sections -nostdlib -Os -mthumb -fsingle-precision-constant -MMD';
-  my @includes =  ('-I.', map { '-I'.$conf{$_} } @libs);
+  my @includes =  ('-I.', map { '-I'.$conf->val('libs', $_) } @libs);
   # TODO: -I. is maybe not needed as we never build in the current dir.
   return $config.' '.$base.' '.$flags.' '.join(' ', @includes);
   # TODO: if we want to generate the dependence file, -MMD can be used.
@@ -100,7 +80,7 @@ sub cxx_flags {
 
 sub ld_flags {
  my $flags = sprintf '-Wl,--gc-sections,--relax,--defsym=__rtc_localtime=%d -mcpu=%s -T %s',
-   time(), $target{cpu}, catfile($conf{'libs.teensy_core'}, $target{core}.'.ld');
+   time(), $target{cpu}, catfile($conf->val('libs', 'teensy_core'), $target{core}.'.ld');
  return $flags.' -Os --specs=nano.specs -mthumb',
 }
 
@@ -112,12 +92,12 @@ my %extensions = (
 
 sub compiler {
   my ($name) = @_;
-  return "'".catfile($conf{'paths.compiler'}, $conf{'paths.compiler_prefix'}.$name)."' ";
+  return "'".catfile($conf->val('paths', 'compiler'), $conf->val('paths', 'compiler_prefix').$name)."' ";
 }
 
 sub tool {
   my ($name) = @_;
-  return "'".catfile($conf{'paths.tools'}, $name)."' ";
+  return "'".catfile($conf->val('paths', 'tools'), $name)."' ";
 }
 
 sub run {
@@ -152,8 +132,8 @@ sub should_build {
 }
 
 for my $lib (@libs) {
-  print "Compiling lib $lib ($conf{$lib}).\n";
-  my $indir = $conf{$lib};
+  print "Compiling lib $lib (".$conf->val('libs', $lib).").\n";
+  my $indir = $conf->val('libs', $lib);
   my $outdir = catdir('_build/', $lib);
   my $outlib = catfile($outdir, $lib.'.a');
   make_path($outdir);
@@ -176,12 +156,13 @@ for my $lib (@libs) {
   }
 }
 
-my $alllibs = join(' ', map {catfile(catdir('_build', $_), $_.'.a')} @libs);
-my $elf = catfile('_build', $conf{'main.name'}.'.elf');
-my $hex = catfile('_build', $conf{'main.name'}.'.hex');
-my $eep = catfile('_build', $conf{'main.name'}.'.eep');
+my $alllibs = join(' ', map {catfile(catdir('_build', $_), $_.'.a')} (reverse @libs));
+my $outname = $conf->val('main', 'name', 'teensy_prog');
+my $elf = catfile('_build', $outname.'.elf');
+my $hex = catfile('_build', $outname.'.hex');
+my $eep = catfile('_build', $outname.'.eep');
 run(compiler('gcc').ld_flags()." $alllibs -o $elf", "Cannot build ELF file.");
 run(compiler('objcopy')."-O ihex -R .eeprom $elf $hex", "Cannot build HEX file.");
 run(compiler('objcopy')."-O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $elf $eep", "Cannot build eeprom file.");
-run(tool('teensy_post_compile')."-file=$conf{'main.name'} -path=_build -tools='$conf{'paths.tools'}'", "blablabla");
+run(tool('teensy_post_compile')."-file=$outname -path=_build -tools='".$conf->val('paths', 'tools')."'", "Error while running teensy_pos_compile.");
 run(tool('teensy_reboot'), "");
