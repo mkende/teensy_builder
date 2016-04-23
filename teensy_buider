@@ -1,0 +1,156 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Config::Auto;
+use File::Basename 'basename';
+use File::Path 'make_path';
+use File::Spec::Functions 'catfile', 'catdir';
+
+sub add_config {
+  my ($file, $hash) = @_;
+  my $conf = Config::Auto::parse($file, format => "ini");
+  while (my ($k1, $v1) = each %{$conf}) {
+    while (my ($k2, $v2) = each %{$v1}) {
+      $hash->{"$k1.$k2"} = $v2;
+    }
+  }
+}
+my %conf;
+add_config('builder.conf', \%conf);
+add_config('local.conf', \%conf);
+
+while (my ($k, $v) = each %conf) {
+  print "$k: $v\n";
+}
+
+my %targets = (
+  teensy31 => {
+    core => 'mk20dx256',
+    rom_size => 262144,
+    ram_size => 65536,
+    valid_freq => [2, 4, 8, 16, 24, 48, 72, 96],
+    cpu => 'cortex-m4',
+    base_libs => '-larm_cortexM4l_math -lm',
+  },
+  teensy30 => {
+    core => 'mk20dx128',
+    rom_size => 131072,
+    ram_size => 16384,
+    valid_freq => [24, 48, 96],
+    cpu => 'cortex-m4',
+    base_libs => '-larm_cortexM4l_math -lm',
+  },
+  teensylc => {
+    core => 'mkl26z64',
+    rom_size => 63488,
+    ram_size => 8192,
+    valid_freq => [24, 48],
+    cpu => 'cortex-m0plus',
+    base_libs => '-larm_cortexM0l_math -lm',
+  },
+);
+$targets{teensy32} = $targets{teensy31};
+
+my @usb_types = qw(SERIAL HID SERIAL_HID MIDI RAW_HID FLIGHTSIM DISABLED);
+my @keyboard_layouts =
+  qw(US_ENGLISH CANADIAN_FRENCH CANADIAN_MULTILINGUAL CZECH
+     DANISH FINNISH FRENCH FRENCH_BELGIAN FRENCH_SWISS GERMAN
+     GERMAN_MAC GERMAN_SWISS ICELANDIC IRISH ITALIAN NORWEGIAN
+     PORTUGUESE PORTUGUESE_BRAZILIAN SERBIAN_LATIN_ONLY SPANISH
+     SPANISH_LATIN_AMERICA SWEDISH TURKISH UNITED_KINGDOM
+     US_INTERNATIONAL);
+
+use constant {
+  default_usb_type => "SERIAL",
+  default_keyboard_layout => "US_ENGLISH",
+  default_cpu_freq => 48,
+};
+
+die "You must specify a target.\n" if not exists $conf{'main.target'};
+die "Invalid target: ".$conf{'main.target'}."\n" if not exists $targets{$conf{'main.target'}};
+my %target = %{$targets{$conf{'main.target'}}};
+die "You must specify a program name.\n" if not exists $conf{'main.name'};
+my $usb_type = uc($conf{'main.usb_type'} // default_usb_type);
+die "Invalid usb type: ${usb_type}.\n" if not grep { $_ eq $usb_type } @usb_types;
+my $keyboard_layout = uc($conf{'main.keyboard_layouts'} // default_keyboard_layout);
+die "Invalid keyboard layout: ${keyboard_layout}.\n" if not grep { $_ eq $keyboard_layout } @keyboard_layouts;
+my $cpu_freq = $conf{'main.cpu_freq'} // default_cpu_freq;
+die "Invalid CPU frequency: ${cpu_freq}.\n" if not grep { $_ == $cpu_freq } @{$target{valid_freq}};
+
+my @libs = grep { m/^libs\./ } keys %conf;
+die "You must specify the 'teensy_core' library.\n" if not grep { $_ eq 'libs.teensy_core' } @libs;
+
+sub common_flags {
+  my $config = sprintf '-DF_CPU=%d000000 -DUSB_%s -DLAYOUT_%s -D__%s__ -mcpu=%s',
+    $cpu_freq, $usb_type, $keyboard_layout, uc($target{core}), $target{cpu};
+  my $base = '-DUSING_MAKEFILE -DARDUINO_ARCH_AVR -DARDUINO=10605 -DTEENSYDUINO=125';
+  my $flags = '-Wall -g -ffunction-sections -fdata-sections -nostdlib -Os -mthumb -fsingle-precision-constant';
+  my @includes =  ('-I.', map { '-I'.$conf{$_} } @libs);
+  # TODO: -I. is maybe not needed as we never build in the current dir.
+  return $config.' '.$base.' '.$flags.' '.join(' ', @includes);
+  # TODO: if we want to generate the dependence file, -MMD can be used.
+}
+
+sub cxx_flags {
+  return common_flags().' -std=gnu++0x -felide-constructors -fno-exceptions -fno-rtti';
+}
+
+sub ld_flags {
+ my $flags = sprintf '-Wl,--gc-sections,--relax,--defsym=__rtc_localtime=%d -mcpu=%s -T %s',
+   time(), $target{cpu}, catfile($conf{'libs.teensy_core'}, $target{core}.'.ld');
+ return $flags.' -Os --specs=nano.specs -mthumb',
+}
+
+my %extensions = (
+  c => ['gcc', common_flags()],
+  cpp => ['g++', cxx_flags()],
+  S => ['gcc', common_flags()],
+);
+
+sub compiler {
+  my ($name) = @_;
+  return "'".catfile($conf{'paths.compiler'}, $conf{'paths.compiler_prefix'}.$name)."' ";
+}
+
+sub tool {
+  my ($name) = @_;
+  return "'".catfile($conf{'paths.tools'}, $name)."' ";
+}
+
+sub run {
+  my ($cmd, $error_msg) = @_;
+  print "$cmd\n";
+  system $cmd and die $error_msg."\n";
+}
+
+for my $lib (@libs) {
+  print "Compiling lib $lib ($conf{$lib}).\n";
+  my $indir = $conf{$lib};
+  my $outdir = catdir('_build/', $lib);
+  my $outlib = catfile($outdir, $lib.'.a');
+  make_path($outdir);
+  for my $ext (keys %extensions) {
+    print "Looking for files with extension: $ext.\n";
+    my ($tool, $flags) = @{$extensions{$ext}};
+    my $compiler = compiler($tool);
+    my @allfiles = glob(catfile($indir, '*.'.$ext));
+    for my $f (@allfiles) {
+      print "Building: $f\n";
+      my $out = catfile($outdir, basename($f).'.o');
+      run("$compiler $flags -o $out -c $f", "Compilation failed.");
+      run(compiler('ar')." rcs $outlib $out", "Cannot add '$out' to the library '$outlib'.");
+    }
+  }
+}
+
+my $alllibs = join(' ', map {catfile(catdir('_build', $_), $_.'.a')} @libs);
+my $elf = catfile('_build', $conf{'main.name'}.'.elf');
+my $hex = catfile('_build', $conf{'main.name'}.'.hex');
+my $eep = catfile('_build', $conf{'main.name'}.'.eep');
+run(compiler('gcc').ld_flags()." $alllibs -o $elf", "Cannot build ELF file.");
+run(compiler('objcopy')."-O ihex -R .eeprom $elf $hex", "Cannot build HEX file.");
+run(compiler('objcopy')."-O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $elf $eep", "Cannot build eeprom file.");
+run(tool('teensy_post_compile')."-file=$conf{'main.name'} -path=_build -tools='$conf{'paths.tools'}'", "blablabla");
+run(tool('teensy_reboot'), "");
