@@ -164,6 +164,7 @@ for my $lib (@libs) {
     my @allfiles = glob(catfile($indir, '*.'.$ext));
     for my $f (@allfiles) {
       my $out = catfile($outdir, basename($f).'.o');
+      next if $lib eq 'libs.teensy_core' && basename($f) eq 'main.cpp';
       if (should_build($out)) {
         print "Building: $f\n";
         run("$compiler $flags -o $out -c $f", "Compilation failed.");
