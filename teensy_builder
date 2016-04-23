@@ -86,7 +86,7 @@ sub common_flags {
   my $config = sprintf '-DF_CPU=%d000000 -DUSB_%s -DLAYOUT_%s -D__%s__ -mcpu=%s',
     $cpu_freq, $usb_type, $keyboard_layout, uc($target{core}), $target{cpu};
   my $base = '-DUSING_MAKEFILE -DARDUINO_ARCH_AVR -DARDUINO=10605 -DTEENSYDUINO=125';
-  my $flags = '-Wall -g -ffunction-sections -fdata-sections -nostdlib -Os -mthumb -fsingle-precision-constant';
+  my $flags = '-Wall -g -ffunction-sections -fdata-sections -nostdlib -Os -mthumb -fsingle-precision-constant -MMD';
   my @includes =  ('-I.', map { '-I'.$conf{$_} } @libs);
   # TODO: -I. is maybe not needed as we never build in the current dir.
   return $config.' '.$base.' '.$flags.' '.join(' ', @includes);
