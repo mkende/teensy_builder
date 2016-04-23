@@ -69,9 +69,7 @@ sub common_flags {
   my $base = '-DUSING_MAKEFILE -DARDUINO_ARCH_AVR -DARDUINO=10605 -DTEENSYDUINO=125';
   my $flags = '-Wall -g -ffunction-sections -fdata-sections -nostdlib -Os -mthumb -fsingle-precision-constant -MMD';
   my @includes =  ('-I.', map { '-I'.$conf->val('libs', $_) } @libs);
-  # TODO: -I. is maybe not needed as we never build in the current dir.
   return $config.' '.$base.' '.$flags.' '.join(' ', @includes);
-  # TODO: if we want to generate the dependence file, -MMD can be used.
 }
 
 sub cxx_flags {
