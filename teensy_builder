@@ -154,12 +154,25 @@ for my $lib (@libs) {
   }
 }
 
+sub check_size {
+  my ($elf) = @_;
+  my $cmd = compiler('size')." -A $elf";
+  print "$cmd\n";
+  my %size = map { print; m/^(\S+)\s+(\S+).*$/ } qx/$cmd/;
+  my $rom = $size{'.text'} + $size{'.data'};
+  my $ram = $size{'.data'} + $size{'.bss'};
+  printf "\nUsing %d octets of ROM (%d%% of %d octets).\n", $rom, (100 * $rom / $target{rom_size}), $target{rom_size};
+  printf "Using %d octets of RAM (%d%% of %d octets).\n\n", $ram, (100 * $ram / $target{ram_size}), $target{ram_size};
+  return $rom <= $target{rom_size} && $ram <= $target{ram_size};
+}
+
 my $alllibs = join(' ', map {catfile(catdir('_build', $_), $_.'.a')} (reverse @libs));
 my $outname = $conf->val('main', 'name', 'teensy_prog');
 my $elf = catfile('_build', $outname.'.elf');
 my $hex = catfile('_build', $outname.'.hex');
 my $eep = catfile('_build', $outname.'.eep');
 run(compiler('gcc').ld_flags()." $alllibs -o $elf", "Cannot build ELF file.");
+check_size($elf) or die "The program cannot fit in the memory of your board!\n";
 run(compiler('objcopy')."-O ihex -R .eeprom $elf $hex", "Cannot build HEX file.");
 run(compiler('objcopy')."-O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $elf $eep", "Cannot build eeprom file.");
 run(tool('teensy_post_compile')."-file=$outname -path=_build -tools='".$conf->val('paths', 'tools')."'", "Error while running teensy_pos_compile.");
