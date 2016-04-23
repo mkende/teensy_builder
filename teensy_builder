@@ -7,6 +7,7 @@ use Config::Auto;
 use File::Basename 'basename';
 use File::Path 'make_path';
 use File::Spec::Functions 'catfile', 'catdir';
+use Makefile::Parser;
 
 sub add_config {
   my ($file, $hash) = @_;
@@ -125,6 +126,31 @@ sub run {
   system $cmd and die $error_msg."\n";
 }
 
+sub mtime {
+  my ($file) = @_;
+  if (not -f $file or not (my @st = stat(_))) {
+    return 0;
+  } else {
+    return $st[9];
+  }
+}
+
+sub should_build {
+  my ($file) = @_;
+  my $dest_time = mtime($file);
+  return 1 if not $dest_time;
+  my $dep_file = $file =~ s/\.o$/.d/r;
+  return 1 if not -f $dep_file;
+  my $dep = Makefile::Parser->new();
+  $dep->parse($dep_file);
+  for my $t ($dep->targets()) {
+    for my $f ($t->prereqs()) {
+      return 1 if $dest_time < mtime($f);
+    }
+  }
+  return 0;
+}
+
 for my $lib (@libs) {
   print "Compiling lib $lib ($conf{$lib}).\n";
   my $indir = $conf{$lib};
@@ -132,15 +158,19 @@ for my $lib (@libs) {
   my $outlib = catfile($outdir, $lib.'.a');
   make_path($outdir);
   for my $ext (keys %extensions) {
-    print "Looking for files with extension: $ext.\n";
+    # print "Looking for files with extension: $ext.\n";
     my ($tool, $flags) = @{$extensions{$ext}};
     my $compiler = compiler($tool);
     my @allfiles = glob(catfile($indir, '*.'.$ext));
     for my $f (@allfiles) {
-      print "Building: $f\n";
       my $out = catfile($outdir, basename($f).'.o');
-      run("$compiler $flags -o $out -c $f", "Compilation failed.");
-      run(compiler('ar')." rcs $outlib $out", "Cannot add '$out' to the library '$outlib'.");
+      if (should_build($out)) {
+        print "Building: $f\n";
+        run("$compiler $flags -o $out -c $f", "Compilation failed.");
+        run(compiler('ar')." rcs $outlib $out", "Cannot add '$out' to the library '$outlib'.");
+      } else {
+        print "Target up-to-date: $out\n";
+      }
     }
   }
 }
