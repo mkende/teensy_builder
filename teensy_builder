@@ -53,11 +53,11 @@ my @keyboard_layouts =
 die "You must specify a target.\n" if not $conf->exists('main', 'target');
 die "Invalid target: ".$conf->val('main', 'target')."\n" if not exists $targets{$conf->val('main', 'target')};
 my %target = %{$targets{$conf->val('main', 'target')}};
-my $usb_type = uc($conf->val('main', 'usb_type', 'SERIAL'));
+my $usb_type = uc($conf->val('main', 'usbtype', 'SERIAL'));
 die "Invalid usb type: ${usb_type}.\n" if not grep { $_ eq $usb_type } @usb_types;
-my $keyboard_layout = uc($conf->val('main', 'keyboard_layout', 'US_ENGLISH'));
+my $keyboard_layout = uc($conf->val('main', 'keyboard', 'US_ENGLISH'));
 die "Invalid keyboard layout: ${keyboard_layout}.\n" if not grep { $_ eq $keyboard_layout } @keyboard_layouts;
-my $cpu_freq = $conf->val('main', 'cpu_freq', 48);
+my $cpu_freq = $conf->val('main', 'cpufreq', 48);
 die "Invalid CPU frequency: ${cpu_freq}.\n" if not grep { $_ == $cpu_freq } @{$target{valid_freq}};
 
 my @libs = $conf->Parameters('libs');
@@ -90,7 +90,8 @@ my %extensions = (
 
 sub compiler {
   my ($name) = @_;
-  return "'".catfile($conf->val('paths', 'compiler'), $conf->val('paths', 'compiler_prefix').$name)."' ";
+  my $bin =  $conf->val('paths', 'compiler_prefix', 'arm-none-eabi-').$name;
+  return "'".catfile($conf->val('paths', 'compiler'), $bin)."' ";
 }
 
 sub tool {
@@ -172,7 +173,7 @@ my $elf = catfile('_build', $outname.'.elf');
 my $hex = catfile('_build', $outname.'.hex');
 my $eep = catfile('_build', $outname.'.eep');
 run(compiler('gcc').ld_flags()." $alllibs -o $elf", "Cannot build ELF file.");
-check_size($elf) or die "The program cannot fit in the memory of your board!\n";
+check_size($elf) or die "The program cannot fit in the memory of your board!ll\n";
 run(compiler('objcopy')."-O ihex -R .eeprom $elf $hex", "Cannot build HEX file.");
 run(compiler('objcopy')."-O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $elf $eep", "Cannot build eeprom file.");
 run(tool('teensy_post_compile')."-file=$outname -path=_build -tools='".$conf->val('paths', 'tools')."'", "Error while running teensy_pos_compile.");
