@@ -48,6 +48,7 @@ Example of a `builder.conf` file:
     name=teensy_phone
     cpufreq=72
     usbtype=serial
+    optimize=s
 
     [libs]
     teensy_core=third_party/teensy_cores/teensy3
