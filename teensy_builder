@@ -7,7 +7,6 @@ use Config::IniFiles;
 use File::Basename 'basename';
 use File::Path 'make_path';
 use File::Spec::Functions 'catfile', 'catdir';
-use Makefile::Parser;
 
 my %conf;
 my $conf = Config::IniFiles->new(-file => 'builder.conf');
@@ -120,12 +119,12 @@ sub should_build {
   return 1 if not $dest_time;
   my $dep_file = $file =~ s/\.o$/.d/r;
   return 1 if not -f $dep_file;
-  my $dep = Makefile::Parser->new();
-  $dep->parse($dep_file);
-  for my $t ($dep->targets()) {
-    for my $f ($t->prereqs(), 'builder.conf', 'local.conf') {
-      return 1 if $dest_time < mtime($f);
-    }
+  local $/ = undef;
+  open my $fh, '<', $dep_file;
+  my (undef, @deps) = split(/\s*:?\s+\\?\r?\n?\s*/, <$fh>);
+  close $fh;
+  for my $f (@deps) { # $dep->targets()) {
+    return 1 if $dest_time < mtime($f);
   }
   return 0;
 }
