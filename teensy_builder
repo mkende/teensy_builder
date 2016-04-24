@@ -58,13 +58,15 @@ my $keyboard_layout = uc($conf->val('main', 'keyboard', 'US_ENGLISH'));
 die "Invalid keyboard layout: ${keyboard_layout}.\n" if not grep { $_ eq $keyboard_layout } @keyboard_layouts;
 my $cpu_freq = $conf->val('main', 'cpufreq', 48);
 die "Invalid CPU frequency: ${cpu_freq}.\n" if not grep { $_ == $cpu_freq } @{$target{valid_freq}};
+my $optimize = $conf->val('main', 'optimize', 's');
+die "Invalid optimize option: $optimize.\n" if not $optimize =~ m/[0123sg]|fast/;
 
 my @libs = $conf->Parameters('libs');
 die "You must specify the 'teensy_core' library.\n" if not grep { $_ eq 'teensy_core' } @libs;
 
 sub common_flags {
-  my $config = sprintf '-DF_CPU=%d000000 -DUSB_%s -DLAYOUT_%s -D__%s__ -mcpu=%s',
-    $cpu_freq, $usb_type, $keyboard_layout, uc($target{core}), $target{cpu};
+  my $config = sprintf '-DF_CPU=%d000000 -DUSB_%s -DLAYOUT_%s -D__%s__ -mcpu=%s -O%s',
+    $cpu_freq, $usb_type, $keyboard_layout, uc($target{core}), $target{cpu}, $optimize;
   my $base = '-DARDUINO_ARCH_AVR -DARDUINO=10605 -DTEENSYDUINO=125 -MMD';
   my $flags = '-Wall -g -ffunction-sections -fdata-sections -nostdlib -Os -mthumb -fsingle-precision-constant';
   my @includes =  ('-I.', map { '-I'.$conf->val('libs', $_) } @libs);
@@ -76,9 +78,9 @@ sub cxx_flags {
 }
 
 sub ld_flags {
- my $flags = sprintf '-Wl,--gc-sections,--relax,--defsym=__rtc_localtime=%d -mcpu=%s -T %s',
-   time(), $target{cpu}, catfile($conf->val('libs', 'teensy_core'), $target{core}.'.ld');
- return $flags.' -Os --specs=nano.specs -mthumb',
+ my $flags = sprintf '-Wl,--gc-sections,--relax,--defsym=__rtc_localtime=%d -mcpu=%s -T %s -O%s',
+   time(), $target{cpu}, catfile($conf->val('libs', 'teensy_core'), $target{core}.'.ld'), $optimize;
+ return $flags.' --specs=nano.specs -mthumb',
 }
 
 my %extensions = (

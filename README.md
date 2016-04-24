@@ -28,6 +28,8 @@ program. It should contain the following sections and values:
    - `usbtype`: the type of USB peripheric to emulate. The default is `serial`.
    - `keyboard`: the keyboard layout to emulate. Used only when emulating a HID
      peripheric. The default is `US_ENGLISH`.
+   - `optimize`: the optimization mode to use with GCC. This can be one of `0`,
+     `1`, `2`, `3`, `s`, `g`, or `fast`. The default is `s`.
  - `[libs]`: this section list the libraries to build in the program. The name
    of each value is arbitrary and is only used to identify the library. The
    associated value is the relative path of that library from the folder of the
