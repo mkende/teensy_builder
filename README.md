@@ -36,7 +36,8 @@ program. It should contain the following sections and values:
    [here](https://github.com/PaulStoffregen/cores/tree/master/teensy3)). Usually
    there will be at least one other library with your source code.
    The order of the libraries matter: they should be given in the order in which
-   they should be linked.
+   they should be linked (so usually the `teensy_core` library will be the first
+   and our own code will be the last).
 
 Example of a `builder.conf` file:
 
