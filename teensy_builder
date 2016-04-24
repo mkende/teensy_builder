@@ -123,7 +123,7 @@ sub should_build {
   my $dep = Makefile::Parser->new();
   $dep->parse($dep_file);
   for my $t ($dep->targets()) {
-    for my $f ($t->prereqs()) {
+    for my $f ($t->prereqs(), 'builder.conf', 'local.conf') {
       return 1 if $dest_time < mtime($f);
     }
   }
