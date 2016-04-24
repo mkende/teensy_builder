@@ -73,8 +73,12 @@ sub common_flags {
   return $config.' '.$base.' '.$flags.' '.join(' ', @includes);
 }
 
+sub c_flags {
+  return common_flags().' -std=c11';
+}
+
 sub cxx_flags {
-  return common_flags().' -std=gnu++0x -felide-constructors -fno-exceptions -fno-rtti';
+  return common_flags().' -std=c++11 -felide-constructors -fno-exceptions -fno-rtti';
 }
 
 sub ld_flags {
@@ -84,7 +88,7 @@ sub ld_flags {
 }
 
 my %extensions = (
-  c => ['gcc', common_flags()],
+  c => ['gcc', c_flags()],
   cpp => ['g++', cxx_flags()],
   S => ['gcc', common_flags()],
 );
