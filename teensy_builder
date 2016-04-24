@@ -162,8 +162,8 @@ sub check_size {
   my %size = map { print; m/^(\S+)\s+(\S+).*$/ } qx/$cmd/;
   my $rom = $size{'.text'} + $size{'.data'};
   my $ram = $size{'.data'} + $size{'.bss'};
-  printf "\nUsing %d octets of ROM (%d%% of %d octets).\n", $rom, (100 * $rom / $target{rom_size}), $target{rom_size};
-  printf "Using %d octets of RAM (%d%% of %d octets).\n\n", $ram, (100 * $ram / $target{ram_size}), $target{ram_size};
+  printf "\nUsing %d bytes of ROM (%d%% of %d bytes).\n", $rom, (100 * $rom / $target{rom_size}), $target{rom_size};
+  printf "Using %d bytes of RAM (%d%% of %d bytes).\n\n", $ram, (100 * $ram / $target{ram_size}), $target{ram_size};
   return $rom <= $target{rom_size} && $ram <= $target{ram_size};
 }
 
