@@ -104,6 +104,9 @@ sub run {
   system $cmd and die $error_msg."\n";
 }
 
+# mtime($file_name)
+# Returns the time in seconds since the epoch when the given file has been
+# modified last. Returns 0 if the file does not exist.
 sub mtime {
   my ($file) = @_;
   if (not -f $file or not (my @st = stat(_))) {
@@ -113,6 +116,13 @@ sub mtime {
   }
 }
 
+# should_build($obj_file_name)
+# Takes the relative path to an object file (e.g. src/main.o) and returns true
+# if this file should be rebuilt. In particular, the function tries to parse a
+# file with the same name of the object file but a '.d' suffix instead of '.o'
+# that is expected to contain a fragment of Makefile giving the dependences of
+# the object file. Returns 1 if any of the dependences is newer than the object
+# file or if the makefile cannot be read.
 sub should_build {
   my ($file) = @_;
   my $dest_time = mtime($file);
@@ -120,7 +130,7 @@ sub should_build {
   my $dep_file = $file =~ s/\.o$/.d/r;
   return 1 if not -f $dep_file;
   local $/ = undef;
-  open my $fh, '<', $dep_file;
+  open my $fh, '<', $dep_file or die "Cannot read the file: $dep_file\n";
   my (undef, @deps) = split(/\s*:?\s+\\?\r?\n?\s*/, <$fh>);
   close $fh;
   for my $f (@deps) { # $dep->targets()) {
@@ -154,6 +164,9 @@ for my $lib (@libs) {
   }
 }
 
+# check_size($elf_file_name)
+# Checks that the program in the given ELF file can fit in the memory of the
+# selected board.
 sub check_size {
   my ($elf) = @_;
   my $cmd = compiler('size')." -A $elf";
