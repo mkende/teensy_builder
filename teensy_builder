@@ -8,13 +8,17 @@ use Cwd 'abs_path';
 use File::Basename 'basename';
 use File::Path 'make_path';
 use File::Spec::Functions 'catfile', 'catdir';
+use List::Util 'none';
 use Getopt::Long qw(:config bundling_override no_ignore_case auto_help);
 
 my $local;
+my @only_files;
 Getopt::Long::GetOptions (
   "help|h" => sub { Getopt::Long::HelpMessage(0) },
-  "local!" => \$local)
+  "local|l" => \$local,
+  "file|f=s" => \@only_files)
   or Getopt::Long::HelpMessage(2);
+@only_files = map {abs_path($_)} @only_files;
 
 my %conf;
 my $conf = Config::IniFiles->new(-file => 'builder.conf') or die "The builder.conf file does not exist.\n";
@@ -183,6 +187,10 @@ sub build {
       my $compiler = compiler($tool);
       my @allfiles = glob(catfile($indir, '*.'.$ext));
       for my $f (@allfiles) {
+        if (@only_files and none { $_ eq abs_path($f) } @only_files) {
+          print "Skipped file: $f\n";
+          next;
+        }
         my $out = catfile($outdir, basename($f).'.o');
         next if $lib eq 'teensy_core' && basename($f) eq 'main.cpp';
         if (should_build($out)) {
@@ -195,6 +203,7 @@ sub build {
       }
     }
   }
+  return if @only_files;
   
   my $alllibs = join(' ', map {catfile(catdir('_build', $_), $_.'.a')} (reverse @libs));
   my $outname = $conf->val('main', 'name', 'teensy_prog');
