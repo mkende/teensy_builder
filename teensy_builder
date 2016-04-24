@@ -257,6 +257,10 @@ Available options:
 --local -- do not upload the program to the board.
 
 =item *
+--file file_name -- only compile the file specified with this option (this
+option can be repeated).
+
+=item *
 --help -- prints this help message.
 
 =back
