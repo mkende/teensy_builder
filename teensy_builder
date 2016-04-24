@@ -4,13 +4,21 @@ use strict;
 use warnings;
 
 use Config::IniFiles;
+use Cwd 'abs_path';
 use File::Basename 'basename';
 use File::Path 'make_path';
 use File::Spec::Functions 'catfile', 'catdir';
+use Getopt::Long qw(:config bundling_override no_ignore_case auto_help);
+
+my $local;
+Getopt::Long::GetOptions (
+  "help|h" => sub { Getopt::Long::HelpMessage(0) },
+  "local!" => \$local)
+  or Getopt::Long::HelpMessage(2);
 
 my %conf;
-my $conf = Config::IniFiles->new(-file => 'builder.conf');
-$conf = Config::IniFiles->new(-file => 'local.conf', -import => $conf);
+my $conf = Config::IniFiles->new(-file => 'builder.conf') or die "The builder.conf file does not exist.\n";
+$conf = Config::IniFiles->new(-file => 'local.conf', -import => $conf) or die "The local.conf file does not exist.\n";
 
 my %targets = (
   teensy31 => {
@@ -145,31 +153,6 @@ sub should_build {
   return 0;
 }
 
-for my $lib (@libs) {
-  print "Compiling lib $lib (".$conf->val('libs', $lib).").\n";
-  my $indir = $conf->val('libs', $lib);
-  my $outdir = catdir('_build/', $lib);
-  my $outlib = catfile($outdir, $lib.'.a');
-  make_path($outdir);
-  for my $ext (keys %extensions) {
-    # print "Looking for files with extension: $ext.\n";
-    my ($tool, $flags) = @{$extensions{$ext}};
-    my $compiler = compiler($tool);
-    my @allfiles = glob(catfile($indir, '*.'.$ext));
-    for my $f (@allfiles) {
-      my $out = catfile($outdir, basename($f).'.o');
-      next if $lib eq 'teensy_core' && basename($f) eq 'main.cpp';
-      if (should_build($out)) {
-        print "Building: $f\n";
-        run("$compiler $flags -o $out -c $f", "Compilation failed.");
-        run(compiler('ar')." rcs $outlib $out", "Cannot add '$out' to the library '$outlib'.");
-      } else {
-        print "Target up-to-date: $out\n";
-      }
-    }
-  }
-}
-
 # check_size($elf_file_name)
 # Checks that the program in the given ELF file can fit in the memory of the
 # selected board.
@@ -185,14 +168,103 @@ sub check_size {
   return $rom <= $target{rom_size} && $ram <= $target{ram_size};
 }
 
-my $alllibs = join(' ', map {catfile(catdir('_build', $_), $_.'.a')} (reverse @libs));
-my $outname = $conf->val('main', 'name', 'teensy_prog');
-my $elf = catfile('_build', $outname.'.elf');
-my $hex = catfile('_build', $outname.'.hex');
-my $eep = catfile('_build', $outname.'.eep');
-run(compiler('gcc').ld_flags()." $alllibs -o $elf", "Cannot build ELF file.");
-check_size($elf) or die "The program cannot fit in the memory of your board!ll\n";
-run(compiler('objcopy')."-O ihex -R .eeprom $elf $hex", "Cannot build HEX file.");
-run(compiler('objcopy')."-O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $elf $eep", "Cannot build eeprom file.");
-run(tool('teensy_post_compile')."-file=$outname -path=_build -tools='".$conf->val('paths', 'tools')."'", "Error while running teensy_pos_compile.");
-run(tool('teensy_reboot'), "");
+# build()
+# Builds the program and upload it to the board, unless --local was specified.
+sub build {
+  for my $lib (@libs) {
+    print "Compiling lib $lib (".$conf->val('libs', $lib).").\n";
+    my $indir = $conf->val('libs', $lib);
+    my $outdir = catdir('_build/', $lib);
+    my $outlib = catfile($outdir, $lib.'.a');
+    make_path($outdir);
+    for my $ext (keys %extensions) {
+      # print "Looking for files with extension: $ext.\n";
+      my ($tool, $flags) = @{$extensions{$ext}};
+      my $compiler = compiler($tool);
+      my @allfiles = glob(catfile($indir, '*.'.$ext));
+      for my $f (@allfiles) {
+        my $out = catfile($outdir, basename($f).'.o');
+        next if $lib eq 'teensy_core' && basename($f) eq 'main.cpp';
+        if (should_build($out)) {
+          print "Building: $f\n";
+          run("$compiler $flags -o $out -c $f", "Compilation failed.");
+          run(compiler('ar')." rcs $outlib $out", "Cannot add '$out' to the library '$outlib'.");
+        } else {
+          print "Target up-to-date: $out\n";
+        }
+      }
+    }
+  }
+  
+  my $alllibs = join(' ', map {catfile(catdir('_build', $_), $_.'.a')} (reverse @libs));
+  my $outname = $conf->val('main', 'name', 'teensy_prog');
+  my $elf = catfile('_build', $outname.'.elf');
+  my $hex = catfile('_build', $outname.'.hex');
+  my $eep = catfile('_build', $outname.'.eep');
+  run(compiler('gcc').ld_flags()." $alllibs -o $elf", "Cannot build ELF file.");
+  check_size($elf) or die "The program cannot fit in the memory of your board!ll\n";
+  run(compiler('objcopy')."-O ihex -R .eeprom $elf $hex", "Cannot build HEX file.");
+  run(compiler('objcopy')."-O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $elf $eep", "Cannot build eeprom file.");
+  if (not $local) {
+    run(tool('teensy_post_compile')."-file=$outname -path=_build -tools='".$conf->val('paths', 'tools')."'", "Error while running teensy_pos_compile.");
+    run(tool('teensy_reboot'), "");
+  }
+}
+
+sub print_path {
+  my $compiler = abs_path($conf->val('paths', 'compiler'));
+  my $tools = abs_path($conf->val('paths', 'tools'));
+  print "export PATH=$compiler:$tools:$ENV{PATH}\n";
+}
+
+my %commands = (
+  build => \&build,
+  path => \&print_path,
+);
+
+@ARGV = ('build') unless @ARGV;
+my @invalid = grep { not exists $commands{$_} } @ARGV;
+Getopt::Long::HelpMessage(-msg => "Invalid command: $invalid[0]", -exitval => 2) if @invalid;
+
+for my $cmd (@ARGV) {
+  &{$commands{$cmd}}();
+}
+
+__END__
+
+=head1 NAME
+
+teensy_builder - A make like utility to build program for the Teensy boards.
+
+=head1 SYNOPSIS
+
+teensy_builder [options] [command]
+
+Available options:
+
+=over
+
+=item *
+--local -- do not upload the program to the board.
+
+=item *
+--help -- prints this help message.
+
+=back
+
+Available commands:
+
+=over
+
+=item *
+build -- this is the default if no other command is specified, it builds
+and upload the program to a Teensy board.
+
+=item *
+path -- this prints a command that can be used to set the PATH
+environment variable so that it contains the compiler and Teensy tools
+directory.
+
+=back
+
+
