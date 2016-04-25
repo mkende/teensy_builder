@@ -210,7 +210,7 @@ sub build {
   my $elf = catfile('_build', $outname.'.elf');
   my $hex = catfile('_build', $outname.'.hex');
   my $eep = catfile('_build', $outname.'.eep');
-  run(compiler('gcc').ld_flags()." $alllibs -o $elf", "Cannot build ELF file.");
+  run(compiler('gcc').ld_flags()." $alllibs -o $elf $target{base_libs}", "Cannot build ELF file.");
   check_size($elf) or die "The program cannot fit in the memory of your board!ll\n";
   run(compiler('objcopy')."-O ihex -R .eeprom $elf $hex", "Cannot build HEX file.");
   run(compiler('objcopy')."-O ihex -j .eeprom --set-section-flags=.eeprom=alloc,load --no-change-warnings --change-section-lma .eeprom=0 $elf $eep", "Cannot build eeprom file.");
