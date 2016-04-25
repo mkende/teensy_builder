@@ -13,10 +13,12 @@ use Getopt::Long qw(:config bundling_override no_ignore_case auto_help);
 
 my $local;
 my @only_files;
+my $all_files;
 Getopt::Long::GetOptions (
   "help|h" => sub { Getopt::Long::HelpMessage(0) },
   "local|l" => \$local,
-  "file|f=s" => \@only_files)
+  "file|f=s" => \@only_files,
+  "all|a" => \$all_files)
   or Getopt::Long::HelpMessage(2);
 @only_files = map {abs_path($_)} @only_files;
 
@@ -144,7 +146,7 @@ sub mtime {
 sub should_build {
   my ($file) = @_;
   my $dest_time = mtime($file);
-  return 1 if not $dest_time;
+  return 1 if not $dest_time or $all_files;
   my $dep_file = $file =~ s/\.o$/.d/r;
   return 1 if not -f $dep_file;
   local $/ = undef;
@@ -259,6 +261,10 @@ Available options:
 =item *
 --file file_name -- only compile the file specified with this option (this
 option can be repeated).
+
+=item *
+--all -- rebuild all the files even if they have not changed. When the --file
+option is used, only the files that it specifies are rebuilt.
 
 =item *
 --help -- prints this help message.
