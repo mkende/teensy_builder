@@ -92,7 +92,7 @@ sub c_flags {
 }
 
 sub cxx_flags {
-  return common_flags().' -std=c++11 -felide-constructors -fno-exceptions -fno-rtti';
+  return common_flags().' -std=gnu++17 -felide-constructors -fno-exceptions -fno-rtti';
 }
 
 sub ld_flags {
@@ -103,6 +103,7 @@ sub ld_flags {
 
 my %extensions = (
   c => ['gcc', c_flags()],
+  cc => ['g++', cxx_flags()],
   cpp => ['g++', cxx_flags()],
   S => ['gcc', common_flags()],
 );
@@ -110,7 +111,11 @@ my %extensions = (
 sub compiler {
   my ($name) = @_;
   my $bin =  $conf->val('paths', 'compiler_prefix', 'arm-none-eabi-').$name;
-  return "'".catfile($conf->val('paths', 'compiler'), $bin)."' ";
+  my $path = catfile($conf->val('paths', 'compiler'), $bin);
+  if ($name eq 'ar' and not -e $path) {
+    return compiler('gcc-ar');
+  }
+  return "'${path}' ";
 }
 
 sub tool {
