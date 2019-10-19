@@ -8,6 +8,7 @@ use Cwd 'abs_path';
 use File::Basename 'basename';
 use File::Path 'make_path';
 use File::Spec::Functions 'catfile', 'catdir';
+use FindBin;
 use List::Util 'none';
 use Getopt::Long qw(:config bundling_override no_ignore_case auto_help);
 
@@ -24,7 +25,16 @@ Getopt::Long::GetOptions (
 
 my %conf;
 my $conf = Config::IniFiles->new(-file => 'builder.conf') or die "The builder.conf file does not exist.\n";
-$conf = Config::IniFiles->new(-file => 'local.conf', -import => $conf) or die "The local.conf file does not exist.\n";
+my $has_local_conf = 0;
+if (-e catfile($FindBin::Bin, 'local.conf')) {
+  has_local_conf = 1;
+  $conf = Config::IniFiles->new(-file => catfile($FindBin::Bin, 'local.conf'), -import => $conf);
+}
+if (-e 'local.conf') {
+  has_local_conf = 1;
+  $conf = Config::IniFiles->new(-file => 'local.conf', -import => $conf);
+}
+die "The local.conf file does not exist.\n" unless $has_local_conf;
 
 my %targets = (
   teensy31 => {
