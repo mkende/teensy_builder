@@ -27,11 +27,11 @@ my %conf;
 my $conf = Config::IniFiles->new(-file => 'builder.conf') or die "The builder.conf file does not exist.\n";
 my $has_local_conf = 0;
 if (-e catfile($FindBin::Bin, 'local.conf')) {
-  has_local_conf = 1;
+  $has_local_conf = 1;
   $conf = Config::IniFiles->new(-file => catfile($FindBin::Bin, 'local.conf'), -import => $conf);
 }
 if (-e 'local.conf') {
-  has_local_conf = 1;
+  $has_local_conf = 1;
   $conf = Config::IniFiles->new(-file => 'local.conf', -import => $conf);
 }
 die "The local.conf file does not exist.\n" unless $has_local_conf;
